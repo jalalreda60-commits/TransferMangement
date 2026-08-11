@@ -1,0 +1,65 @@
+name: Build Windows executable
+
+# Builds a Windows .exe with PyInstaller:
+#   - on every push to main and every pull request -> uploaded as a
+#     downloadable build artifact (Actions tab, retained 30 days)
+#   - on every pushed tag matching "v*" (e.g. v1.0.0) -> also attached
+#     to an auto-created GitHub Release
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable (PyInstaller)
+        run: pyinstaller --noconfirm TransferManagementSystem.spec
+
+      - name: Smoke-test the build (output check)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/TransferManagementSystem/TransferManagementSystem.exe")) {
+            throw "Build did not produce TransferManagementSystem.exe"
+          }
+          Write-Host "Build output OK: dist/TransferManagementSystem/TransferManagementSystem.exe"
+
+      - name: Package build as zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/TransferManagementSystem/*" -DestinationPath "TransferManagementSystem-windows.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TransferManagementSystem-windows
+          path: TransferManagementSystem-windows.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TransferManagementSystem-windows.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
